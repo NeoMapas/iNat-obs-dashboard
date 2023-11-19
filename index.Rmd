@@ -9,7 +9,7 @@ output:
     source: embed
     logo: NeoMapas_logo_100x.gif
     navbar:
-      - { title: "Back home", href: "https://neomapas.github.io", align: left }
+      - { title: "Volver al inicio", href: "https://neomapas.github.io", align: left }
 editor_options: 
   chunk_output_type: console
 ---
@@ -26,6 +26,7 @@ library(sf)
 library(tmap)
 library(lubridate)
 library(dplyr)
+library(stringr)
 
 library(RColorBrewer)
 palette(brewer.pal(8, "Set2"))
@@ -36,9 +37,7 @@ palette(brewer.pal(8, "Set2"))
 
 here::i_am("index.Rmd")
 
-CNEB <- read_sf(here::here("data", "VBG.gpkg")) %>% 
-  filter(UM>0) %>%
-  select(codigo=cdg)
+CNEB <- read_sf(here::here("data", "VBG.gpkg")) 
 
 JR_obs <- readRDS(here::here("data","iNaturalist-obs-NeoMapas.rds"))
 
@@ -56,16 +55,30 @@ lookup <- c(name="scientific_name",
 
 JR_obs <- JR_obs %>%
   mutate(date=ymd(observed_on), 
-        filter1 = grepl("Muestreos de NeoMapas", tag_list)) %>%
+        filter1 = grepl("Muestreos de NeoMapas", tag_list),
+        URA=str_extract(tag_list,"NM[0-9]+")) %>%
   rename(any_of(lookup))
 
 NeoMapas_obs <- JR_obs %>% 
   filter(latitude > 0,
          longitude < -60,
-         filter1 | year(date) %in% 2003:2010)
+         filter1 | year(date) %in% 2003:2012) %>%
+  st_as_sf(coords=c("longitude","latitude"), crs=4326)
 
-obs_byyear = as.data.frame(table(year(NeoMapas_obs$date)))
-colnames(obs_byyear)=c("Año","Observaciones") 
+qry <- st_intersects(NeoMapas_obs,CNEB)
+
+NeoMapas_obs[lengths(qry)==1,"CN"] <- {CNEB %>% slice(unlist(qry)) %>% pull(cdg)}
+
+NeoMapas_obs <- NeoMapas_obs %>% 
+  mutate(unidad=case_when(
+    !is.na(URA) & !is.na(CN) ~ sprintf("%s (%s)",URA,CN),
+    !is.na(CN) ~ sprintf("celda %s",CN),
+    TRUE ~ "sin información"))
+    
+
+obs_byyear <-  as.data.frame(table(year(NeoMapas_obs$date)))
+
+colnames(obs_byyear) <- c("Año","Observaciones") 
 
 ```
 
@@ -75,10 +88,24 @@ Column1{.tabset .tabset-fade data-width=250}
 
 Tablas de observaciones por:
 
+### Unidades regionales de NeoMapas {data-width=245}
+
+```{r uralist}
+
+NeoMapas_obs %>% 
+  st_drop_geometry() %>%
+  group_by("Unidades regionales"=unidad) %>% 
+  summarise(Observaciones=n_distinct(date), Registros=n()) %>%
+  arrange(desc(Observaciones)) %>%
+  slice_head(n = 20) %>% 
+  knitr::kable()
+```
+
 ### Especies {data-width=245}
 ```{r taxalist}
 
 NeoMapas_obs %>% 
+  st_drop_geometry() %>%
   group_by("Especies"=name) %>% 
   summarise(Observaciones=n_distinct(date), Registros=n()) %>%
   arrange(desc(Observaciones)) %>%
@@ -91,12 +118,14 @@ NeoMapas_obs %>%
 ```{r sitelist}
 
 NeoMapas_obs %>% 
+  st_drop_geometry() %>%
   group_by("Lugar"=place_guess) %>% 
   summarise(Observaciones=n_distinct(date), Registros=n()) %>%
   arrange(desc(Observaciones)) %>%
   slice_head(n = 20) %>% 
   knitr::kable()
 ```
+
 
 Column2 {.tabset .tabset-fade}
 -------
@@ -105,29 +134,30 @@ Column2 {.tabset .tabset-fade}
 ```{r map, eval = TRUE}
 
 
-NeoMapas_obs_sf <- st_as_sf(
-  NeoMapas_obs,
-  coords=c("longitude","latitude"),
-  crs=4326) %>% select(any_of(c("name","date","taxon","common_name", 
-      "scientific_name", "image_url", "url"))) 
 
-popup_html <- with(NeoMapas_obs_sf,
+#NeoMapas_obs_sf <-  %>% select(any_of(c("name","date","taxon","common_name", 
+#      "scientific_name", "image_url", "url"))) 
+
+popup_html <- with(NeoMapas_obs,
                    sprintf("<p><b>%s</b><br/><i>%s</i></p>
-                           <p>Observada el: %s<br/>
+                           <p>Observada en <u>%s</u> el %s<br/>
                            <p>
                            <img src='%s' width='200'/><br/>
                            <a href='%s' target='inat'>Ver en iNaturalist</a>
                            </p>", 
-                           common_name,  name,
+                           common_name,  name, unidad,
                            date, image_url,url))
 
 #tmap_mode("view")
+CNEB_slc <- CNEB %>% 
+    filter(UM>0) %>%
+    select(celda=cdg)
 
-map1 <- tm_shape(CNEB) + 
+map1 <- tm_shape(CNEB_slc) + 
   tm_polygons(alpha=.33) +
   tm_minimap()
 
-tmap_leaflet(map1) %>% leaflet::addMarkers(data = NeoMapas_obs_sf,
+tmap_leaflet(map1) %>% leaflet::addMarkers(data = NeoMapas_obs,
                    popup = ~popup_html)
   
 ```
