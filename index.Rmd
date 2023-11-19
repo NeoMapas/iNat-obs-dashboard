@@ -34,7 +34,7 @@ palette(brewer.pal(8, "Set2"))
 
 ```{r dataread, message=FALSE, warning=FALSE, include=FALSE}
 
-here::i_am("iNat-dashboard.Rmd")
+here::i_am("index.Rmd")
 
 CNEB <- read_sf(here::here("data", "VBG.gpkg")) %>% 
   filter(UM>0) %>%
@@ -169,18 +169,6 @@ ggplot(inat_obs_day,aes(x=obs_day,y=obs_year,size=Freq)) +
        y="Año",
        size = "Nr. de observaciobes") + 
   theme_minimal()
-  
-
-cal_data <- tibble(obs_day=1:365) %>% 
-left_join(inat_obs_day, by="obs_day") %>%
-  mutate(Freq=coalesce(Freq,0)) %>% pull(Freq)
-calendR(2006,
-        weeknames = c("M","T","W","Th","F","Sa","Su"),
-        #monthnames = c("E","F","M","A","M","J","J","A","S","O","N","D"),
-        special.days = cal_data,
-        gradient = TRUE,
-        low.col = "#FFFFED",
-        special.col = "#FF0000")
 
 ```
 
