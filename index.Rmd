@@ -1,0 +1,200 @@
+---
+title: "Observaciones en iNaturalist"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: 
+      version: 4
+      bootswatch: superhero
+    social: menu
+    source: embed
+    logo: NeoMapas_logo_100x.gif
+    navbar:
+      - { title: "Back home", href: "https://neomapas.github.io", align: left }
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(leaflet)
+library(ggplot2)
+library(plotly)
+library(spocc)
+library(rinat)
+#library(mapr)
+library(sf)
+library(tmap)
+library(lubridate)
+library(dplyr)
+
+library(RColorBrewer)
+palette(brewer.pal(8, "Set2"))
+
+```
+
+```{r dataread, message=FALSE, warning=FALSE, include=FALSE}
+
+here::i_am("iNat-dashboard.Rmd")
+
+CNEB <- read_sf(here::here("data", "VBG.gpkg")) %>% 
+  filter(UM>0) %>%
+  select(codigo=cdg)
+
+JR_obs <- readRDS(here::here("data","iNaturalist-obs-NeoMapas.rds"))
+
+lookup <- c(name="scientific_name",
+            user="user_login",
+            #date="observed_on",
+            taxonid="id",
+            taxon="iconic_taxon_name",
+            kingdom="taxon_kingdom_name",
+            phylum="taxon_phylum_name",
+            class="taxon_class_name",
+            order="taxon_order_name",
+            genus="taxon_genus_name"
+            )
+
+JR_obs <- JR_obs %>%
+  mutate(date=ymd(observed_on), 
+        filter1 = grepl("Muestreos de NeoMapas", tag_list)) %>%
+  rename(any_of(lookup))
+
+NeoMapas_obs <- JR_obs %>% 
+  filter(latitude > 0,
+         longitude < -60,
+         filter1 | year(date) %in% 2003:2010)
+
+obs_byyear = as.data.frame(table(year(NeoMapas_obs$date)))
+colnames(obs_byyear)=c("Año","Observaciones") 
+
+```
+
+
+Column1{.tabset .tabset-fade data-width=250}
+-------
+
+Tablas de observaciones por:
+
+### Especies {data-width=245}
+```{r taxalist}
+
+NeoMapas_obs %>% 
+  group_by("Especies"=name) %>% 
+  summarise(Observaciones=n_distinct(date), Registros=n()) %>%
+  arrange(desc(Observaciones)) %>%
+  slice_head(n = 20) %>% 
+  knitr::kable()
+```
+
+### Lugares {data-width=245}
+
+```{r sitelist}
+
+NeoMapas_obs %>% 
+  group_by("Lugar"=place_guess) %>% 
+  summarise(Observaciones=n_distinct(date), Registros=n()) %>%
+  arrange(desc(Observaciones)) %>%
+  slice_head(n = 20) %>% 
+  knitr::kable()
+```
+
+Column2 {.tabset .tabset-fade}
+-------
+
+### Mapa
+```{r map, eval = TRUE}
+
+
+NeoMapas_obs_sf <- st_as_sf(
+  NeoMapas_obs,
+  coords=c("longitude","latitude"),
+  crs=4326) %>% select(any_of(c("name","date","taxon","common_name", 
+      "scientific_name", "image_url", "url"))) 
+
+popup_html <- with(NeoMapas_obs_sf,
+                   sprintf("<p><b>%s</b><br/><i>%s</i></p>
+                           <p>Observada el: %s<br/>
+                           <p>
+                           <img src='%s' width='200'/><br/>
+                           <a href='%s' target='inat'>Ver en iNaturalist</a>
+                           </p>", 
+                           common_name,  name,
+                           date, image_url,url))
+
+#tmap_mode("view")
+
+map1 <- tm_shape(CNEB) + 
+  tm_polygons(alpha=.33) +
+  tm_minimap()
+
+tmap_leaflet(map1) %>% leaflet::addMarkers(data = NeoMapas_obs_sf,
+                   popup = ~popup_html)
+  
+```
+
+
+### Phylum 
+```{r donut}
+##numbers of observations by phylum 
+taxranks = as.data.frame(table(NeoMapas_obs$taxon))
+##Donut plot
+p = taxranks %>% plot_ly(labels = ~Var1, values=~Freq) %>% 
+  add_pie(hole=0.6) %>% 
+  layout(title = ~paste0("Numero total de Taxa: ", length(unique(NeoMapas_obs$taxonid)))) 
+
+plotly::config(p,displayModeBar = F) 
+```
+
+### Observaciones por año
+```{r obsbyyear}
+#plot number of observation by date 
+ggplot(obs_byyear, aes(x=Año,y=Observaciones,group=1)) + geom_line() + geom_point()+ xlab("Año") + ylab("Observaciones") + theme_minimal()
+
+```
+
+
+### Calendario de observaciones
+```{r calobs2022}
+inat_obs_day <- NeoMapas_obs %>% 
+  transmute(obs_year=year(date),
+            obs_day=yday(date)) %>% 
+  group_by(obs_year,obs_day,.groups = "drop") %>%
+  summarise(Freq=n()) %>% 
+  mutate(obs_day=as.numeric(as.character(obs_day)))
+
+
+ggplot(inat_obs_day,aes(x=obs_day,y=obs_year,size=Freq)) + 
+  geom_point() +
+  labs(x="Día del año",
+       y="Año",
+       size = "Nr. de observaciobes") + 
+  theme_minimal()
+  
+
+cal_data <- tibble(obs_day=1:365) %>% 
+left_join(inat_obs_day, by="obs_day") %>%
+  mutate(Freq=coalesce(Freq,0)) %>% pull(Freq)
+calendR(2006,
+        weeknames = c("M","T","W","Th","F","Sa","Su"),
+        #monthnames = c("E","F","M","A","M","J","J","A","S","O","N","D"),
+        special.days = cal_data,
+        gradient = TRUE,
+        low.col = "#FFFFED",
+        special.col = "#FF0000")
+
+```
+
+Column3{data-width=150}
+-------
+
+### Números
+```{r}
+#spp 
+nspp = length(unique(NeoMapas_obs$name))
+milestone <- ceiling(nspp/100)*100
+gauge(nspp, min=0, max=milestone,label="Taxa")
+
+qual = sum(NeoMapas_obs$quality_grade %in% "research")
+gauge(qual, min=0, max=nrow(NeoMapas_obs),label="Obs. con grado de\ninvestigación")
+
+```

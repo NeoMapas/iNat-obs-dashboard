@@ -1,0 +1,87 @@
+---
+author: "José R. Ferrer Paris"
+title: "Como recrear éstas páginas"
+editor_options: 
+  chunk_output_type: console
+---
+# Flexdashboard + iNaturalist
+
+iNat-obs-dashboard se inspira en este ejemplo:
+https://github.com/gonzalobravoargentina/inat_flexdashboard_ARG
+
+Este proyecto funciona con RStudio y Rmarkdown. Existen alternativas para desarrollar tableros informativos con Quarto y Jupyter Notebooks, pero no las he explorado todavía.
+
+## Preparar los datos
+
+### Descargar datos de iNaturalist
+
+Primero instalo el paquete `rinat`:
+
+```{r}
+here::i_am("how-to-site.qmd")
+if (!require(rinat)) {
+  install.packages("rinat")
+  library(rinat)
+}
+```
+
+A continuación, descargo las observaciones en iNaturalist para mi usuario, y las guardo en la carpeta `data` en formato `RDS`:
+
+```{r}
+user_obs <- get_inat_obs_user("NeoMapas",maxresults = 5000)
+if (!dir.exists(here::here("data")))
+    dir.create(here::here("data"))
+file_name <- here::here("data","iNaturalist-obs-NeoMapas.rds")
+saveRDS(file=file_name, user_obs)
+
+```
+
+### Datos geoespaciales de NeoMaps
+
+Igualmente, instalo el paquete `dataverse`:
+
+```{r}
+if (!require(dataverse)) {
+  install.packages("dataverse")
+  library(dataverse)
+}
+```
+
+Luego escribo una función para verificar y descargar archivos del repositorio de `dataverse`:
+
+```{r}
+library(dplyr)
+
+dataverse_download <- function(repo, arch, localdir="data") {
+  if (!dir.exists(here::here(localdir)))
+    stop("Carpeta inalcanzable")
+  destino <- here::here(localdir, arch)
+  if (file.exists(destino)) {
+    message("Ya existe un archivo con ese nombre/ubicación")
+  } else {
+    as_binary <- get_file_by_name(
+      filename = arch,
+      dataset = repo)
+    writeBin(as_binary, destino)
+  }
+}
+```
+
+Esta función sirve para descargar archivos identificados por el código (DOI) del reposiorio y el nomber del archivo.
+
+```{r}
+dataverse_download(repo = "10.7910/DVN/IME0M5", 
+                     arch = "VBG.gpkg")
+```
+
+
+### Logo
+
+Usamos `wget` e ImageMagick para descargar y ajustar el tamaño del logo que usamos en el tablero. Estas dos líneas de código se ejecutan en el terminal (yo uso `bash` o `zsh`):
+
+```sh
+##mkdir 
+wget https://neomapas.github.io/img/logo_NeoMapas_p.gif
+magick logo_NeoMapas_p.gif  -resize 100x148  NeoMapas_logo_100x.gif
+```
+
