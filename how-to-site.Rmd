@@ -85,3 +85,9 @@ wget https://neomapas.github.io/img/logo_NeoMapas_p.gif
 magick logo_NeoMapas_p.gif  -resize 100x148  NeoMapas_logo_100x.gif
 ```
 
+## Generar HTML
+
+Optiones:
+- Con Rstudio, usar el botón de `Knit` o similar.
+- Desde una sesión de R: `rmarkdown::render('index.Rmd')`
+- Desde el terminal con Rscript: `Rscript -e "rmarkdown::render('index.Rmd')"`
