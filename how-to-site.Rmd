@@ -18,7 +18,7 @@ Este proyecto funciona con RStudio y Rmarkdown. Existen alternativas para desarr
 Primero instalo el paquete `rinat`:
 
 ```{r}
-here::i_am("how-to-site.qmd")
+here::i_am("how-to-site.Rmd")
 if (!require(rinat)) {
   install.packages("rinat")
   library(rinat)
